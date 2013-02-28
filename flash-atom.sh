@@ -58,8 +58,9 @@ function runCommand() {
 function createFA() {
 
     # Do we have the correct params being passed in?
-    local faSize=$1;    isEmpty "$faSize";
-    local   user=$2;    isEmpty   "$user";
+    local  faSize=$1;    isEmpty    "$faSize";
+    local    user=$2;    isEmpty      "$user";
+    local geJobId=$3;    isEmpty   "$geJobId";
 
     # Check to see if we have enough free memory on the system
     local totalMem=$(free -g | grep Mem: | awk {'print $2'});
@@ -71,12 +72,22 @@ function createFA() {
         exit 1;
     fi
     
+    # If flash-Atom system already exists, remove it.
+    local isFAPresent=$(df -h | grep $FALOCATION/$user.$geJobId | wc -l);
+    if [ $isFAPresent -ne 0 ]; then 
+        # Grab a list of all mount points for this user. Best case, only one
+        # instance, however edge case, multiple (script failed?)...hence for.
+        for i in $(df -h | grep $FALOCATION/$user.$geJobId) ; do
+            # @TO-DO
+            echo ;
+        done;
+    fi
+    
     # Create the flash-Atom filesystem
-    runCommand "mkdir -p $FALOCATION/$user/"
+    runCommand "mkdir -p $FALOCATION/$user.$geJobId"
     
     # Mount the flash-Atom filesystem using tmpfs
-    runCommand "mount -t tmpfs -o size="$faSize"G,mode=755,uid=$user,gid=users tmpfs $FALOCATION/$user/"
-
+    runCommand "mount -t tmpfs -o size="$faSize"G,mode=755,uid=$user,gid=users tmpfs $FALOCATION/$user.$geJobId"
 
 }
 
@@ -85,7 +96,17 @@ function createFA() {
 #  1: Destroy the mount -- *force* if necessary
 #  2: store / log results
 function destroyFA() {
-	echo
+    # Do we have the correct params being passed in?
+    local    user=$1;    isEmpty      "$user";
+    local geJobId=$2;    isEmpty   "$geJobId";
+}
+
+# This function will show all running instances of flash atom
+function showFAInstances() {
+    # Grab a list of all mount points for flash atom.
+    df -h | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
+        echo "$MTNPOINT using $USED of $LIMIT limit.";
+    done;
 }
 
 # This function prints the help menu
@@ -104,20 +125,21 @@ Version: $VERSION
     ---------------------------------------------------------------------------
     -c,--create    : Will create a fixed size of memory to be used as a tmpfs.
                    : Available parameters / example are below:
-                   :     sh $0 -c 20 aebrenne
+                   :     sh $0 -c 20 aebrenne 183300
                    : This will create 20GB of ramdisk with the user/folder of
-                   : aebrenne in $DISKPATH
-                   : First param is a limit in GB
-                   : Second param is a valid username
+                   : aebrenne in $FALOCATION/aebrenne.183300
+                   :    First param --> is a limit in GB
+                   :   Second param --> is a valid username
+                   :    Third param --> is the SGE job id
 
-    -d,--destroy   : Destroys a given ramdisk instance that was created. Example
-                   :     sh $0 -d aebrenne
-                   : This will create 20GB of ramdisk with the user/folder of
-                   : aebrenne in $DISKPATH
-                   : First param is a limit in GB
-                   : Second param is a valid username
+    -d,--destroy   : Destroys a given flash atom instance that was created.
+                   :     sh $0 -d aebrenne 183300
+                   : This will destroy $FALOCATION/aebrenne.183300 and return
+                   : the memory for system use.
+                   :    First param --> is a valid username
+                   :   Second param --> is the SGE job id
 
-    -l,--list      : List current ramdisk instances. Example
+    -l,--list      : List current flash atom instances. Example
                    :     sh $0 -l
 
 END
@@ -130,7 +152,7 @@ END
 
 case "$1" in
    --create|-c)
-      createFA "$2" "$3"
+      createFA "$2" "$3" "$4"
       exit 0;
    ;;
    --destroy|-d)
@@ -138,7 +160,7 @@ case "$1" in
       exit 0;
    ;;
    --list|-l)
-      showList
+      showFAInstances
       exit 0;
    ;;
    *)

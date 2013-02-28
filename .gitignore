@@ -1,0 +1,10 @@
+# OS Generated Files
+####################
+.DS_Store*
+ehthumbs.db
+Icon?
+Thumbs.db
+
+# Development Files
+###################
+*.scp
