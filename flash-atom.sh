@@ -72,16 +72,9 @@ function createFA() {
         exit 1;
     fi
     
-    # If flash-Atom system already exists, remove it.
-    local isFAPresent=$(df -h | grep $FALOCATION/$user.$geJobId | wc -l);
-    if [ $isFAPresent -ne 0 ]; then 
-        # Grab a list of all mount points for this user. Best case, only one
-        # instance, however edge case, multiple (script failed?)...hence for.
-        for i in $(df -h | grep $FALOCATION/$user.$geJobId) ; do
-            # @TO-DO
-            echo ;
-        done;
-    fi
+    # If flash-Atom system already exists, remove it. This is an edge case at
+    # best, but it doesn't hurt to include it.
+    destroyFA "$user" "$geJobId"
     
     # Create the flash-Atom filesystem
     runCommand "mkdir -p $FALOCATION/$user.$geJobId"
@@ -99,6 +92,17 @@ function destroyFA() {
     # Do we have the correct params being passed in?
     local    user=$1;    isEmpty      "$user";
     local geJobId=$2;    isEmpty   "$geJobId";
+    
+    # If flash-Atom system already exists, remove it.
+    local isFAPresent=$(df -h | grep $FALOCATION/$user.$geJobId | wc -l);
+    if [ $isFAPresent -ne 0 ]; then 
+        # Grab a list of all mount points for this user. Best case, only one
+        # instance, however edge case, multiple (script failed?)...hence for.
+        for i in $(df -h | grep $FALOCATION/$user.$geJobId) ; do
+            # @TO-DO
+            echo ;
+        done;
+    fi
 }
 
 # This function will show all running instances of flash atom
