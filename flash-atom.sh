@@ -16,6 +16,7 @@ VERSION=1.0
 MEMBUFFER=10 # Value in GB of the buffer we should set aside for system process
              # This value is subtracted from the $availMem in createFA function
 FALOCATION=/fa
+GUSER=""
 
 ###### Helper Methods
 # isEmpty checks all passed in params and exits if any are empty 
@@ -34,16 +35,64 @@ function isEmpty() {
 function runCommand() {
     
     # Runs the command
-    $@    
+    $@
     #echo "$@"
 
     local exitStatus=$?;
     if [ $exitStatus -ne 0 ]; then
-        echo "FAILED: $1 produced exit code $exitStatus";
+        local error="FAILED: $1 produced exit code $exitStatus";
+        echo $error;
+        log "$error";
         exit 1;
     fi
     
     return $exitStatus;
+}
+
+
+# Helper Function for log and createFA
+function storeFAInstances() {
+    # Grab a list of all mount points for flash atom and
+    # store to file.
+    df -h | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
+        echo "$MTNPOINT using $USED of $LIMIT limit." >> $0.tmp
+    done;
+}
+
+# Log and Send emails on errors
+function log() {
+    
+    # Do we have the correct params being passed in?
+    local message=$1;
+    local    user=$GUSER;
+    local    node=$(hostname -s);
+    
+    storeFAInstances;
+    local runningFAs=$(cat $0.tmp);
+    local getMemory=$(free -g);
+    #To: $user@hpc.oit.uci.edu
+    #cc: aebrenne@uci.edu, hmangala@uci.edu, jfarran@uci.edu
+    
+    # Debugging Purposes
+    /usr/sbin/sendmail -t << EOF
+To: $user@hpc.oit.uci.edu
+Cc: aebrenne@uci.edu
+Subject: [FA Failed] $user on $node
+
+FlashAtom has failed on $node. Should you have questions, please contact HPC staff. FlashAtom guide available here: http://hpc.oit.uci.edu/flashAtom
+    
+Error Message:
+$message
+
+Debug:
+[root@$node ~]# flash-atom --list
+$runningFAs
+[root@$node ~]# free -g
+$getMemory
+EOF
+
+    rm -rf $0.tmp
+
 }
 
 ###### Main Functions
@@ -61,14 +110,25 @@ function createFA() {
     local  faSize=$1;    isEmpty    "$faSize";
     local    user=$2;    isEmpty      "$user";
     local geJobId=$3;    isEmpty   "$geJobId";
+    GUSER="$user";
 
     # Check to see if we have enough free memory on the system
     local totalMem=$(free -g | grep Mem: | awk {'print $2'});
     local availMem=$(free -g | grep Mem: | awk {'print $4'});
-    local memToUse=$(expr $availMem - $MEMBUFFER);
-
+    local activeFA="0";
+    # Do not want to over commit memory set aside by FA. Memory is only used
+    # as files populate FA system -- it will not show up under free -g
+    storeFAInstances;
+    for i in $(cat $0.tmp | awk {'print $3'} | sed s'/.$//') ; do
+        activeFA=$(($activeFA + $i));
+    done
+    local memToUse=$(($availMem - $MEMBUFFER - $activeFA));
+    rm -rf $0.tmp
+    
     if [ $memToUse -le $faSize ] ; then
-        echo "Not enough system memory. Requested: "$faSize"GB, available: "$availMem"GB from "$totalMem"GB with a "$MEMBUFFER"GB reserved buffer, leaving "$memToUse"GB available."
+        local error="Not enough system memory. Requested: "$faSize"GB, available: "$availMem"GB from "$totalMem"GB with a "$MEMBUFFER"GB reserved buffer, leaving "$memToUse"GB available."
+        echo $error;
+        log "$error";
         exit 1;
     fi
     
@@ -92,16 +152,19 @@ function destroyFA() {
     # Do we have the correct params being passed in?
     local    user=$1;    isEmpty      "$user";
     local geJobId=$2;    isEmpty   "$geJobId";
+    GUSER="$user";
     
     # If flash-Atom system already exists, remove it.
     local isFAPresent=$(df -h | grep $FALOCATION/$user.$geJobId | wc -l);
     if [ $isFAPresent -ne 0 ]; then 
         # Grab a list of all mount points for this user. Best case, only one
         # instance, however edge case, multiple (script failed?)...hence for.
-        for i in $(df -h | grep $FALOCATION/$user.$geJobId) ; do
-            # @TO-DO
-            echo ;
+        for i in $(lsof $FALOCATION/$user.$geJobId | awk {'print $2'} | tail -n +2) ; do
+            runCommand "kill -9 $i";
         done;
+        
+        runCommand "umount $FALOCATION/$user.$geJobId";
+        runCommand "rm -rf $FALOCATION/$user.$geJobId";
     fi
 }
 
@@ -112,6 +175,7 @@ function showFAInstances() {
         echo "$MTNPOINT using $USED of $LIMIT limit.";
     done;
 }
+
 
 # This function prints the help menu
 function helpMenu() {
@@ -160,7 +224,7 @@ case "$1" in
       exit 0;
    ;;
    --destroy|-d)
-      destroyFA "$2"
+      destroyFA "$2" "$3"
       exit 0;
    ;;
    --list|-l)
