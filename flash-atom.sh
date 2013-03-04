@@ -7,9 +7,17 @@
 # requires no hardware costs. Flash Atom is ideal for large compute nodes that
 # can spare double/triple digit system memory for ramdisk.
 #
+#  +------------+-------------------------------------------------+
+#  | Error Code | Meaning                                         |
+#  +------------+-------------------------------------------------+
+#  | 0          | Created FA Successful                           |
+#  | 1          | Command Failed OR Argument is Null              |
+#  | 3          | Not enough system memory avaiable to create FA  |
+#  +------------+-------------------------------------------------+
+#
 # @author       Adam Brenner   <aebrenne@uci.edu>
 # @version      1.0
-# @date         02/2013
+# @date         03/2013
 
 ####### Global Variables
 VERSION=1.0
@@ -24,7 +32,7 @@ function isEmpty() {
     for i in "$@"
     do
         if [[ -z $i ]] ; then
-            echo "At least one agrument is empty or missing";
+            echo "At least one argument is empty or missing";
             exit 1;
         fi
     done
@@ -40,6 +48,8 @@ function runCommand() {
 
     local exitStatus=$?;
     if [ $exitStatus -ne 0 ]; then
+        # exitStatus of 126 is permission problem
+        # exitStatus of 127 is command not found (check path)
         local error="FAILED: $1 produced exit code $exitStatus";
         echo $error;
         log "$error";
@@ -54,6 +64,7 @@ function runCommand() {
 function storeFAInstances() {
     # Grab a list of all mount points for flash atom and
     # store to file.
+    echo "" > $0.tmp > /dev/null
     df -h | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
         echo "$MTNPOINT using $USED of $LIMIT limit." >> $0.tmp
     done;
@@ -70,7 +81,6 @@ function log() {
     storeFAInstances;
     local runningFAs=$(cat $0.tmp);
     local getMemory=$(free -g);
-    #To: $user@hpc.oit.uci.edu
     #cc: aebrenne@uci.edu, hmangala@uci.edu, jfarran@uci.edu
     
     # Debugging Purposes
@@ -85,9 +95,9 @@ Error Message:
 $message
 
 Debug:
-[root@$node ~]# flash-atom --list
+[$USER@$node ~]# flash-atom --list
 $runningFAs
-[root@$node ~]# free -g
+[$USER@$node ~]# free -g
 $getMemory
 EOF
 
@@ -129,7 +139,7 @@ function createFA() {
         local error="Not enough system memory. Requested: "$faSize"GB, available: "$availMem"GB from "$totalMem"GB with a "$MEMBUFFER"GB reserved buffer, leaving "$memToUse"GB available."
         echo $error;
         log "$error";
-        exit 1;
+        exit 3;
     fi
     
     # If flash-Atom system already exists, remove it. This is an edge case at
