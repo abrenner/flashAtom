@@ -19,6 +19,7 @@ VERSION=1.0
 MEMBUFFER=10 # Value in GB of the buffer we should set aside for system process
              # This value is subtracted from the $availMem in run function
 FALOCATION=/fa
+TMPFILE=$BASHPID.tmp
 
 ###### Helper Methods
 # isEmpty checks all passed in params and exits if any are empty 
@@ -57,24 +58,17 @@ function runCommand() {
 function storeFAInstances() {
     # Grab a list of all mount points for flash atom and
     # store to file.
-    echo "" > $0.tmp > /dev/null
+    echo "" > $TMPFILE > /dev/null
     df -h | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
-        echo "$MTNPOINT using $USED of $LIMIT limit." >> $0.tmp
+        echo "$MTNPOINT using $USED of $LIMIT limit." >> $TMPFILE
     done;
 }
 
 
 ###### Main Functions
-# This function will create the tmpfs
-# Thigs to consider:
-#  1: Does system have enough free memory for this?
-#  2: Are the correct directories / permissions in place?
-#  3: Create flash-atom
-#    a) mount
-#    b) test read/write
-#    c) store / log results
 function run() {
 
+    HOSTNAME=$(hostname -s);
     # Check to see if we have enough free memory on the system
     local totalMem=$(free -g | grep Mem: | awk {'print $2'});
     local availMem=$(free -g | grep Mem: | awk {'print $4'});
@@ -82,13 +76,18 @@ function run() {
     # Do not want to over commit memory set aside by FA. Memory is only used
     # as files populate FA system -- it will not show up under free -g
     storeFAInstances;
-    for i in $(cat $0.tmp | awk {'print $3'} | sed s'/.$//') ; do
+    for i in $(cat $TMPFILE | awk {'print $3'} | sed s'/.$//') ; do
         activeFA=$(($activeFA + $i));
     done
     local memToUse=$(($availMem - $MEMBUFFER - $activeFA));
-    rm -rf $0.tmp
+    rm -rf $TMPFILE
 
-    echo "$memToUse on system";
+    if [ $memToUse -ge 0 ] ; then
+        runCommand "qconf -mattr exechost complex_values fa_size=${memToUse}G $HOSTNAME"
+#         echo "Greaeter then zero";
+#    else
+#        echo "Not greater";
+    fi
 }
 
 # This function prints the help menu
