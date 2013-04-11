@@ -75,7 +75,6 @@ Version: $VERSION
     -r,--run       : Will run and update the complex resource for scratch so
                    : GE can queue jobs correctly. Example below:
                    :     sh $0 -r
-
 END
 
 }

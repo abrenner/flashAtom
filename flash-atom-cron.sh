@@ -59,7 +59,7 @@ function storeFAInstances() {
     # Grab a list of all mount points for flash atom and
     # store to file.
     echo "" > $TMPFILE > /dev/null
-    df -h | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
+    df -h -B G | grep $FALOCATION | awk {'print $6, $2, $3'} | while read MTNPOINT USED LIMIT ; do
         echo "$MTNPOINT using $USED of $LIMIT limit." >> $TMPFILE
     done;
 }
@@ -90,6 +90,29 @@ function run() {
     fi
 }
 
+# Setup cron to run this script
+function createCron() {
+    
+    local cronLocation="/etc/cron.d/";
+    local cronFile="flash-atom-cron";
+    local pwdLoc=$(pwd);
+    
+    # ! -d is for directories while ! -f is for files
+    if [ -f $cronLocation/$cronFile ] ; then
+        # Remove current cron file and create new one
+        rm -rf $cronLocation/$cronFile
+    fi
+    
+    # Create cron job
+    cat > $cronLocation/$cronFile << EOF
+## minute hour day month week command
+      *    *    *    *    *   /bin/sh $0 -r
+EOF
+
+    /sbin/service crond restart
+
+}
+
 # This function prints the help menu
 function helpMenu() {
 	cat << END
@@ -101,6 +124,12 @@ Version: $VERSION
     General Commands:
     ---------------------------------------------------------------------------
     -h,--help      : Print this help screen
+
+    Installation Options:
+    ---------------------------------------------------------------------------
+    -c,--cron      : Will setup a cronjob in /etc/cron.d/ for this script to be
+                   : ran. Cron is currently setup to run every minute and
+                   : update the SGE value.
 
     Program Commands:
     ---------------------------------------------------------------------------
@@ -119,6 +148,10 @@ END
 case "$1" in
    --run|-r)
       run
+      exit 0;
+   ;;
+   --cron|-c)
+      createCron
       exit 0;
    ;;
    *)
